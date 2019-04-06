@@ -1,0 +1,777 @@
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE UART0_APP
+OBJECT MODULE PLACED IN UART0_app.OBJ
+COMPILER INVOKED BY: D:\Keil_C51\C51\BIN\C51.EXE UART0_app.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          
+   2          /*------------------------------------------------------------------*/
+   3          /* --- STC MCU International Limited -------------------------------*/
+   4          /* --- STC 1T Series MCU Programme Demo ----------------------------*/
+   5          /* --- Fax: 86-755-82944243 ----------------------------------------*/
+   6          /* --- Tel: 86-755-82948412 ----------------------------------------*/
+   7          /* --- Web: www.STCMCU.com -----------------------------------------*/
+   8          /* If you want to use the program or the program referenced in the  */
+   9          /* article, please specify in which data and procedures from STC    */
+  10          /*------------------------------------------------------------------*/
+  11          
+  12          /*      ±¾³ÌÐò¾­¹ý²âÊÔÍêÈ«Õý³£, ²»Ìá¹©µç»°¼¼ÊõÖ§³Ö, Èç²»ÄÜÀí½â, Çë×ÔÐÐ²¹³äÏà¹Ø»ù´¡.  */
+  13          
+  14          
+  15          /*************  ±¾³ÌÐò¹¦ÄÜËµÃ÷  **************
+  16          
+  17                  ²âÊÔ·½·¨£º
+  18          
+  19                  ¸ù¾ÝÄúµÄÖ÷Ê±ÖÓºÍ²¨ÌØÂÊÐÞ¸Ä"ÓÃ»§¶¨Òå²ÎÊý"ÀïµÄÏà¹Ø¶¨Òå£¬±àÒëºóÏÂÔØµ½MCU¡£
+  20          
+  21                  Í¨¹ý´®¿ÚÖúÊÖÏòMCU·¢ËÍÊý¾Ý£¬MCUÊÕµ½ºóÔ­Ñù·µ»Ø¡£
+  22          */
+  23                                                                                             
+  24          
+  25          /*************** ÓÃ»§¶¨Òå²ÎÊý *****************************/
+  26          
+  27          #define MAIN_Fosc               22118400L       //define main clock
+  28          
+  29          #define Baudrate1               9600            //define the baudrate, Èç¹ûÊ¹ÓÃBRT×ö²¨ÌØÂÊ·¢ÉúÆ÷,Ôò²¨ÌØÂÊ¸ú´®¿Ú2Ò»Ñù
+  30                                                                                  //12T mode: 600~115200 for 22.1184MHZ, 300~57600 for 11.0592MHZ
+  31          
+  32          #define Baudrate2               19200           //define the baudrate2,
+  33                                                                                  //12T mode: 600~115200 for 22.1184MHZ, 300~57600 for 11.0592MHZ
+  34          
+  35          #define         BUF_LENTH       128             //¶¨Òå´®¿Ú½ÓÊÕ»º³å³¤¶È
+  36          
+  37          /**********************************************************/
+  38          
+  39          //#include      <reg51.h>
+  40          
+  41          sfr AUXR1 = 0xA2;
+  42          sfr     AUXR = 0x8E;
+  43          sfr S2CON = 0x9A;       //12C5A60S2Ë«´®¿ÚÏµÁÐ
+  44          sfr S2BUF = 0x9B;       //12C5A60S2Ë«´®¿ÚÏµÁÐ
+  45          sfr IE2   = 0xAF;       //STC12C5A60S2ÏµÁÐ
+  46          sfr BRT   = 0x9C;
+  47          
+  48          unsigned char   uart1_wr;               //Ð´Ö¸Õë
+  49          unsigned char   uart1_rd;               //¶ÁÖ¸Õë
+  50          unsigned char   xdata RX1_Buffer[BUF_LENTH];
+  51          bit             B_TI;
+  52          
+  53          unsigned char   uart2_wr;               //Ð´Ö¸Õë
+  54          unsigned char   uart2_rd;               //¶ÁÖ¸Õë
+  55          unsigned char   xdata RX2_Buffer[BUF_LENTH];
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 2   
+
+  56          bit             B_TI2;
+  57          
+  58          
+  59          /****************** ±àÒëÆ÷×Ô¶¯Éú³É£¬ÓÃ»§ÇëÎðÐÞ¸Ä ************************************/
+  60          
+  61          #define T1_TimerReload  (256 - MAIN_Fosc / 192 / Baudrate1)                     //Calculate the timer1 reload value     at 12T mo
+             -de
+  62          #define BRT_Reload              (256 - MAIN_Fosc / 12 / 16 / Baudrate2)         //Calculate BRT reload value
+  63          
+  64          #define TimeOut1                (28800 / (unsigned long)Baudrate1 + 2)
+  65          #define TimeOut2                (28800 / (unsigned long)Baudrate2 + 2)
+  66          
+  67          #define TI2                             (S2CON & 0x02) != 0
+  68          #define RI2                             (S2CON & 0x01) != 0
+  69          #define CLR_TI2()               S2CON &= ~0x02
+  70          #define CLR_RI2()               S2CON &= ~0x01
+  71          
+  72          /**********************************************************/
+  73          
+  74          /******************** ±¾µØº¯ÊýÉùÃ÷ ***************/
+  75          /********************************************************************************
+  76          * STC12C5A60S2¿ØÖÆPN532½øÐÐÑ°¿¨²Ù×÷
+  77          * STC12C5A60S2Í¨¹ýUARTÓëPN532ÏàÁ¬
+  78          * Í¨¹ýÖÐ¶ÏÊµÏÖ½ÓÊÕUARTÊý¾Ý£¬²¢Í¨¹ý¶¨Ê±ÅÐ¶ÏPN532µÄÏìÓ¦ÊÇ·ñ³¬Ê±
+  79          ********************************************************************************/
+  80          #include "reg52.h"
+  81          #include <intrins.h>
+  82          #include <string.h>
+  83          #define ERR_NO        0
+  84          #define ERR_TIMEOUT   1
+  85          #define ERR_SENDDATA  2
+  86          #define ERR_RECVACK   3
+  87          #define ERR_RECVDATA  4
+  88          #define ERR_CARD          5
+  89          
+  90          sfr P1M1 = 0x91;        //P1M1.n,P1M0.n         =00--->Standard,        01--->push-pull
+  91          sfr P1M0 = 0x92;        //                                      =10--->pure input,      11--->open drain
+  92          sfr P0M1 = 0x93;        //P0M1.n,P0M0.n         =00--->Standard,        01--->push-pull
+  93          sfr P0M0 = 0x94;        //                                      =10--->pure input,      11--->open drain
+  94          sfr P2M1 = 0x95;        //P2M1.n,P2M0.n         =00--->Standard,        01--->push-pull
+  95          sfr P2M0 = 0x96;        //                                      =10--->pure input,      11--->open drain
+  96          sfr P3M1  = 0xB1;       //P3M1.n,P3M0.n         =00--->Standard,        01--->push-pull
+  97          sfr P3M0  = 0xB2;       //                                      =10--->pure input,      11--->open drain
+  98          
+  99          //-----------------------------UART1²¿·ÖÊ¹ÓÃµÄÈ«¾Ö±äÁ¿---------------------------
+ 100          xdata unsigned char gPn532Data[100];            //13.56M RFÊý¾Ý»º´æ
+ 101          xdata unsigned char *gpPn532RxBuf, gPn532RxLen; //ÓÃÓÚÖÐ¶Ïº¯Êý´¦Àí½ÓÊÕbuf
+ 102          xdata unsigned char gi;     //ÓÃÓÚ½ÓÊÕÊý¾ÝÓë½ÓÊÕackÖ®¼ä½øÐÐÇø±ð
+ 103          //-------------------------------------------------------------------------------
+ 104          unsigned char gTimeMult;
+ 105          unsigned char gTimeOutAckFlag;
+ 106          unsigned char gTimeOutDataFlag;
+ 107          unsigned char gUart1RecvFlag;
+ 108          
+ 109          sbit p25 = P2^5;
+ 110          sbit LED1 = P3^5;
+ 111          sbit LED2 = P3^7;
+ 112          sbit BUZZER = P3^6;
+ 113          
+ 114          unsigned char icId[4] = {0xB6,0x9B,0x26,0xEE};          //°×¿¨
+ 115          
+ 116          void C51InitIo(void)
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 3   
+
+ 117          {     
+ 118   1       P3M1 &= ~(1<<5),       P3M0 |=  (1<<5);        //P1.5 set as push-pull output mode      
+ 119   1       P3M1 &= ~(1<<6),       P3M0 |=  (1<<6);        //P1.6 set as push-pull output mode
+ 120   1       P3M1 &= ~(1<<7),       P3M0 |=  (1<<7);        //P1.7 set as push-pull output mode
+ 121   1       LED1 = 0;
+ 122   1       LED2 = 0;
+ 123   1       BUZZER = 0;
+ 124   1       //P2M0 |= 0x20; 
+ 125   1       //P2M1 |= 0x00;//ÅäÖÃP2.5ÎªÇ¿ÉÏÀ­Êä³ö
+ 126   1      }
+ 127          //¶¨Ê±Ê±¼ä=50ms
+ 128          void C51InitTimer1(void)
+ 129          {
+ 130   1              AUXR &= 0xBF;           //¶¨Ê±Æ÷Ê±ÖÓ12TÄ£Ê½
+ 131   1              TMOD &= 0x0F;           //ÉèÖÃ¶¨Ê±Æ÷Ä£Ê½
+ 132   1              TMOD |= 0x10;           //ÉèÖÃ¶¨Ê±Æ÷Ä£Ê½
+ 133   1              TL1 = 0x00;             //ÉèÖÃ¶¨Ê±³õÖµ
+ 134   1              TH1 = 0x4C;             //ÉèÖÃ¶¨Ê±³õÖµ
+ 135   1              TF1 = 0;                //Çå³ýTF1±êÖ¾
+ 136   1              TR1 = 0;                //¶¨Ê±Æ÷1¿ªÊ¼¼ÆÊ±
+ 137   1      }
+ 138             
+ 139          void C51StartTimer0()
+ 140          {
+ 141   1       TR0 = 1;
+ 142   1      }
+ 143          
+ 144          void C51StartTimer1()
+ 145          {
+ 146   1       TR1 = 1;
+ 147   1      }
+ 148          void C51StopTimer1()
+ 149          {
+ 150   1       TR1 = 0;
+ 151   1      }
+ 152          void C51InitTimer(unsigned char num)
+ 153          {
+ 154   1       //AUXR |= 0xC0;//bit7->T0x12:0->12T,1->1T;bit6->T1x12:0->12T,1->1T,Ä¬ÈÏÇé¿öÏÂÊÇ´«Í³8051ËÙ¶È
+ 155   1       TMOD |= 0x01;
+ 156   1       TH0 = 0x4C;
+ 157   1       TL0 = 0x00;//0x4C00=19456,(65536-19456)*12/22118400=0.025s=25ms
+ 158   1       gTimeMult = num;//25*40=1000ms=1s
+ 159   1       ET0 = 1;
+ 160   1       TR0 = 1;
+ 161   1      }
+ 162          void C51StopTimer()
+ 163          {
+ 164   1      // TR0 = 0;
+ 165   1      }
+ 166          /**************************************************
+ 167          Function: init_uart();
+ 168          Description:
+ 169            set uart working mode,
+ 170            Ê¹ÓÃ¶ÀÁ¢²¨ÌØÂÊ·¢ÉúÆ÷×÷Îª²¨ÌØÂÊ·¢ÉúÆ÷ 
+ 171          **************************************************/
+ 172          void C51InitUart(void)
+ 173          {
+ 174   1      // AUXR |= 0x18; //BRTR=1,Æô¶¯¶ÀÁ¢²¨ÌØÂÊ·¢ÉúÆ÷,S2SMOD=1,´®¿Ú2²¨ÌØÂÊ*2£¬S1BRS=1£¬´®¿Ú1Ê¹ÓÃ¶ÀÁ¢²¨ÌØÂÊ·¢ÉúÆ÷×
+             -÷Îª²¨ÌØÂÊ·¢ÉúÆ÷,S1BRS=0£¬´®¿Ú1Ê¹ÓÃ¶¨Ê±Æ÷1×÷Îª²¨ÌØÂÊ·¢ÉúÆ÷
+ 175   1      //     
+ 176   1      // SCON |= 0x50; //UART1¹¤×÷ÓÚÄ£Ê½1(8Î»uart,¼ÓÉÏÆðÊ¼Î»ÓëÍ£Ö¹Î»¹²10Î»)£¬¿É±äËÙÂÊf=((2^SMOD)/32)*BRT£¬ren==1
+             -->ÔÊÐí´®ÐÐ½ÓÊÕ
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 4   
+
+ 177   1      // PCON |= 0x80; //smod=1, 
+ 178   1      // TMOD |= 0x20; //¶¨Ê±Æ÷¹¤×÷Óë·½Ê½2£¬ÓÉTR1¿ØÖÆ¶¨Ê±Æ÷µÄ¿ªÆôÓë¹Ø±Õ
+ 179   1      //// TH1   = 0xFF; //22.1184MHz:0xF4->9600, 0xFA->19200, 0xFD->38400, 0xFE->57600, 0xFF->115200
+ 180   1      //
+ 181   1      //// TH1   = 0xFE; //11.0592MHz:0xF4->9600, 0xFA->19200, 0xFD->38400, 0xFE->57600, 0xFF->115200 
+ 182   1      //// TL1   = 0xFF;
+ 183   1      // TR1   = 1;  //Æô¶¯¶¨Ê±Æ÷1   
+ 184   1       ES    = 1;     //ÔÊÐí´®¿Ú1ÖÐ¶Ï
+ 185   1      // S2CON |= 0x50; //UART2¹¤×÷ÓÚÄ£Ê½1(8Î»uart,¼ÓÉÏÆðÊ¼Î»ÓëÍ£Ö¹Î»¹²10Î»)£¬¿É±äËÙÂÊf=((2^S2SMOD)/32)*BRT£¬ren
+             -==1->ÔÊÐí´®ÐÐ½ÓÊÕ  
+ 186   1      // BRT    = 0xF4; //BRTx12=0;0xFF->115200,0xF4->9600,0xA0->1200 
+ 187   1       IE2   |= 0x01; //ÔÊÐí´®¿Ú2ÖÐ¶Ï
+ 188   1              PCON |= 0x80;           //Ê¹ÄÜ²¨ÌØÂÊ±¶ËÙÎ»SMOD
+ 189   1              SCON = 0x50;            //8Î»Êý¾Ý,¿É±ä²¨ÌØÂÊ
+ 190   1              AUXR |= 0x40;           //¶¨Ê±Æ÷1Ê±ÖÓÎªFosc,¼´1T
+ 191   1              AUXR &= 0xFE;           //´®¿Ú1Ñ¡Ôñ¶¨Ê±Æ÷1Îª²¨ÌØÂÊ·¢ÉúÆ÷
+ 192   1              TMOD &= 0x0F;           //Çå³ý¶¨Ê±Æ÷1Ä£Ê½Î»
+ 193   1              TMOD |= 0x20;           //Éè¶¨¶¨Ê±Æ÷1Îª8Î»×Ô¶¯ÖØ×°·½Ê½
+ 194   1              TL1 = 0xFA;             //Éè¶¨¶¨Ê±³õÖµ
+ 195   1              TH1 = 0xFA;             //Éè¶¨¶¨Ê±Æ÷ÖØ×°Öµ
+ 196   1              ET1 = 0;                //½ûÖ¹¶¨Ê±Æ÷1ÖÐ¶Ï
+ 197   1              TR1 = 1;                //Æô¶¯¶¨Ê±Æ÷1
+ 198   1      
+ 199   1      
+ 200   1              AUXR |= 0x08;           //Ê¹ÄÜ²¨ÌØÂÊ±¶ËÙÎ»S2SMOD
+ 201   1              S2CON = 0x50;           //8Î»Êý¾Ý,¿É±ä²¨ÌØÂÊ
+ 202   1              AUXR |= 0x04;           //¶ÀÁ¢²¨ÌØÂÊ·¢ÉúÆ÷Ê±ÖÓÎªFosc,¼´1T
+ 203   1              BRT = 0xFA;             //Éè¶¨¶ÀÁ¢²¨ÌØÂÊ·¢ÉúÆ÷ÖØ×°Öµ
+ 204   1              AUXR |= 0x10;           //Æô¶¯¶ÀÁ¢²¨ÌØÂÊ·¢ÉúÆ÷
+ 205   1      }
+ 206          //´®¿Ú1·¢ËÍÒ»¸ö×Ö½Úº¯Êý
+ 207          void C51Uart1SendByte(unsigned char num)
+ 208          {
+ 209   1       ES = 0;  
+ 210   1       TI = 0;
+ 211   1       SBUF = num;
+ 212   1       while (0==TI);
+ 213   1       TI = 0;
+ 214   1       ES = 1;
+ 215   1      }
+ 216          //---------´®¿Ú2·¢ËÍÓë½ÓÊÕÒ»¸ö×Ö½Úº¯Êý----------
+ 217          void C51Uart2SendByte(unsigned char num)
+ 218          { 
+ 219   1       IE2   &= 0xFE; //ÔÊÐí´®¿Ú2ÖÐ¶Ï£¬ÐèÒªÔö¼Ó¹Ø±Õ¡¢´ò¿ªÖÐ¶ÏÓï¾ä£¬²»È»´®¿Ú2¹¤×÷²»Õý³£ 
+ 220   1       S2CON = S2CON&0xFD;//Çå³ý·¢ËÍÖÐ¶Ï±êÖ¾
+ 221   1       S2BUF = num;
+ 222   1       while (0==(S2CON&0x02));//µÈÓÚ1ËµÃ÷·¢ËÍÍê³É
+ 223   1       S2CON = S2CON&0xFD;//Çå³ý·¢ËÍÖÐ¶Ï±êÖ¾
+ 224   1       IE2   |= 0x01; //ÔÊÐí´®¿Ú2ÖÐ¶Ï
+ 225   1      }
+ 226          //ÑÓÊ±n*1usº¯Êý
+ 227          void C51Delay1us(unsigned long int n)
+ 228          {
+ 229   1       while (--n)
+ 230   1       {
+ 231   2        _nop_();
+ 232   2        _nop_();
+ 233   2        _nop_();
+ 234   2        _nop_();
+ 235   2        _nop_();
+ 236   2       }
+ 237   1      }
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 5   
+
+ 238          /*****************************************************************
+ 239          * º¯ÊýÃû£º  PN532SendData
+ 240          * º¯Êý¹¦ÄÜ£ºÖ÷¿ØÆ÷ÏòPN532·¢ËÍÊý¾Ý
+ 241          * ÊäÈë²ÎÊý£º
+ 242           pBuf£ºÐèÒª·¢ËÍ¸øPN532µÄÖ¡Êý¾Ý 
+ 243           len£º pBufµÄ³¤¶È
+ 244          * Êä³ö²ÎÊý£º
+ 245                  ·µ»ØÊÇ·ñ³É¹¦±êÖ¾
+ 246                      ³É¹¦£ºSUCCESS
+ 247                      Ê§°Ü£ºÏàÓ¦µÄ´íÎó´úÂë
+ 248          ********************************************************************/
+ 249          unsigned char PN532SendData(unsigned char *pBuf, unsigned char len)
+ 250          { 
+ 251   1       unsigned char i;
+ 252   1      // WDT_CONTR = 0x3F;
+ 253   1       for (i=0; i<len; i++)
+ 254   1       {
+ 255   2        C51Uart1SendByte(pBuf[i]);
+ 256   2       }      
+ 257   1          return ERR_NO;
+ 258   1      }
+ 259          /***************************************************
+ 260          * º¯ÊýÃû£º  PN532RecvData
+ 261          * º¯Êý¹¦ÄÜ£ºÖ÷¿ØÆ÷´ÓPN532½ÓÊÕÊý¾Ý
+ 262          * ÊäÈë²ÎÊý£º
+ 263                  ÎÞ 
+ 264          * Êä³ö²ÎÊý£º
+ 265                  pBuf£º
+ 266                      ½ÓÊÕÖ¡»º´æ 
+ 267                  ·µ»ØÊÇ·ñ³É¹¦±êÖ¾
+ 268                      ³É¹¦£ºSUCCESS
+ 269                      Ê§°Ü£ºÏàÓ¦µÄ´íÎó´úÂë
+ 270          ***************************************************/
+ 271          unsigned char PN532RecvData(unsigned char *pBuf)
+ 272          {  
+ 273   1       gTimeOutDataFlag = 0;
+ 274   1       gUart1RecvFlag = 0;
+ 275   1      // C51InitTimer(4);
+ 276   1       gpPn532RxBuf = pBuf;        //Start of RX buffer
+ 277   1          gPn532RxLen = 6;            // Load RX byte counter
+ 278   1       gi = 0;
+ 279   1       while (!(gTimeOutDataFlag||gUart1RecvFlag));//Ö»ÒªÓÐÒ»¸öÎª1ÔòÍË³öÑ­»·
+ 280   1      // C51StopTimer();
+ 281   1       if (1==gUart1RecvFlag)
+ 282   1       {
+ 283   2           return ERR_NO;
+ 284   2       }
+ 285   1       else
+ 286   1       {
+ 287   2        return ERR_TIMEOUT;
+ 288   2       }
+ 289   1      }       
+ 290          /****************************************
+ 291          * º¯ÊýÃû£º  PN532SendAck
+ 292          * º¯Êý¹¦ÄÜ£ºÖ÷¿ØÆ÷ÏòPN532·¢ËÍACKÖ¡
+ 293          * ÊäÈë²ÎÊý£º
+ 294           ÎÞ
+ 295          * Êä³ö²ÎÊý£º
+ 296                  ·µ»ØÊÇ·ñ³É¹¦±êÖ¾
+ 297                      ³É¹¦£ºSUCCESS
+ 298                      Ê§°Ü£ºÏàÓ¦µÄ´íÎó´úÂë
+ 299          *****************************************/
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 6   
+
+ 300          unsigned char PN532SendAck()
+ 301          {  
+ 302   1       unsigned char pAckBuf[6] = {0x00,0x00,0xFF,0x00,0xFF,0x00};
+ 303   1       unsigned char i;
+ 304   1       
+ 305   1       for (i=0; i<6; i++)
+ 306   1       {
+ 307   2        C51Uart1SendByte(pAckBuf[i]);
+ 308   2       }   
+ 309   1          return ERR_NO;
+ 310   1      }
+ 311          /***********************************************
+ 312          * º¯ÊýÃû£º  PN532RecvAck
+ 313          * º¯Êý¹¦ÄÜ£ºÖ÷¿ØÆ÷´ÓPN532½ÓÊÕACKÖ¡
+ 314          * ÊäÈë²ÎÊý£º
+ 315           ÎÞ 
+ 316          * Êä³ö²ÎÊý£º
+ 317                  pBuf£º
+ 318                      ½ÓÊÕACKÖ¡»º´æ
+ 319                  ·µ»ØÊÇ·ñ³É¹¦±êÖ¾
+ 320                      ³É¹¦£ºSUCCESS
+ 321                      Ê§°Ü£ºÏàÓ¦µÄ´íÎó´úÂë
+ 322          *************************************************/
+ 323          unsigned char PN532RecvAck(unsigned char *pBuf)
+ 324          {  
+ 325   1       gTimeOutAckFlag = 0;
+ 326   1       gUart1RecvFlag = 0;
+ 327   1      // C51InitTimer(1);
+ 328   1       gpPn532RxBuf = pBuf;        //Start of RX buffer
+ 329   1          gPn532RxLen = 6;            // Load RX byte counter
+ 330   1       gi = 0;
+ 331   1       while (!(gTimeOutAckFlag||gUart1RecvFlag));//Ö»ÒªÓÐÒ»¸öÎª1ÔòÍË³öÑ­»·
+ 332   1      // C51StopTimer();
+ 333   1       if (1==gUart1RecvFlag)
+ 334   1       {
+ 335   2           return ERR_NO;
+ 336   2       }
+ 337   1       else
+ 338   1       {
+ 339   2        return ERR_TIMEOUT;
+ 340   2       }
+ 341   1      }
+ 342          /*********************************************************************************************************
+ 343          * º¯ÊýÃû£º  SAMConfiguration
+ 344          * º¯Êý¹¦ÄÜ£ºÉèÖÃPN532µÄÄÚ²¿²ÎÊý
+ 345          * ÊäÈë²ÎÊý£º
+ 346           mode:
+ 347                0x01:normal mode
+ 348                0x02:virtual mode
+ 349                0x03:wired mode
+ 350                0x04:dual mode
+ 351           timeout:
+ 352                0x00:²»Ê¹ÓÃtimeout
+ 353                0x01-0xFF£º³¬Ê±Öµ
+ 354           irq:
+ 355                0x00£º²»Ê¹ÓÃP70_IRQ
+ 356                0x01£ºÊ¹ÓÃP70_IRQ
+ 357          * Êä³ö²ÎÊý£º
+ 358           ³É¹¦£ºERR_NO
+ 359                  Ê§°Ü£ºERR_RECVACK£¬ERR_RECVDATA
+ 360          * ÊäÈëÊä³ö²ÎÊý£º
+ 361                  pRfBuf£ºÊäÈë£¬ÓÃÓÚ´æ·ÅÊäÈë²ÎÊýµÄ»º´æ£¬´ÓÍâ²¿´«Èë£¬ÓÃÓÚ½â¾öÔÚº¯ÊýÄÚ²¿¶¨Òå¹ý´óµÄÊý×éÎÊÌâ
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 7   
+
+ 362                          Êä³ö£¬´æ·Å´ÓPN532½ÓÊÕµÄ½á¹û
+ 363          **********************************************************************************************************
+             -/
+ 364          unsigned char SAMConfiguration(unsigned char *pRfBuf, unsigned char mode, unsigned char timeout, unsigned 
+             -char irq)
+ 365          {
+ 366   1          unsigned char temp;
+ 367   1          unsigned char s;
+ 368   1          pRfBuf[0] = 0x00; //Ç°µ¼Âë
+ 369   1          pRfBuf[1] = 0x00; //°ü¿ªÊ¼±êÖ¾2¸ö×Ö½Ú
+ 370   1          pRfBuf[2] = 0xFF;
+ 371   1          pRfBuf[3] = 3 + 1 + 1;//len + 1×Ö½ÚµÄPD0 + 1×Ö½ÚµÄTFI
+ 372   1          pRfBuf[4] = 0x100-pRfBuf[3];
+ 373   1          pRfBuf[5] = 0xD4; //·½Ïò±êÊ¾
+ 374   1          temp = pRfBuf[5];
+ 375   1          pRfBuf[6] = 0x14; //ÃüÁîÂë
+ 376   1          temp += pRfBuf[6];
+ 377   1          pRfBuf[7] = mode; 
+ 378   1          temp += pRfBuf[7];
+ 379   1          pRfBuf[8] = timeout;
+ 380   1          temp += pRfBuf[8];
+ 381   1          pRfBuf[9] = irq;
+ 382   1          temp += pRfBuf[9];
+ 383   1          
+ 384   1          pRfBuf[10] = 0x100 - temp; //DCS
+ 385   1          pRfBuf[11] = 0x00;
+ 386   1          
+ 387   1          //µ×²ã·¢ËÍº¯Êý
+ 388   1          s = PN532SendData(pRfBuf,12);
+ 389   1          if (s!=ERR_NO)
+ 390   1          {
+ 391   2              return ERR_SENDDATA;
+ 392   2          }
+ 393   1          s = PN532RecvAck(pRfBuf);
+ 394   1          if (s!=ERR_NO)
+ 395   1          {
+ 396   2              return ERR_RECVACK;
+ 397   2          }
+ 398   1          s = PN532RecvData(pRfBuf);
+ 399   1          if (s!=ERR_NO)
+ 400   1          {
+ 401   2              return ERR_RECVDATA;
+ 402   2          }
+ 403   1          
+ 404   1          return ERR_NO;
+ 405   1      }
+ 406          /****************************************************************************************
+ 407          * º¯ÊýÃû£º  InListPassiveTarget
+ 408          * º¯Êý¹¦ÄÜ£ºPN532¼ì²â¿¨
+ 409          * ÊäÈë²ÎÊý£º
+ 410           maxTag:
+ 411                      PN532×î´ó³õÊ¼»¯¿¨µÄ¸öÊý£¬PN532Ò»´ÎÖ»ÄÜÍ¬Ê±´¦Àí2ÕÅ¿¨         
+ 412           brty:
+ 413                      0x00 : 106 kbps type A (ISO/IEC14443 Type A),
+ 414                      0x01 : 212 kbps (FeliCa polling),
+ 415                      0x02 : 424 kbps (FeliCa polling),
+ 416                      0x03 : 106 kbps type B (ISO/IEC14443-3B),
+ 417                      0x04 : 106 kbps Innovision Jewel tag.
+ 418                  pData:
+ 419          * Êä³ö²ÎÊý£º
+ 420           ³É¹¦£ºERR_NO
+ 421                  Ê§°Ü£ºERR_RECVACK£¬ERR_RECVDATA
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 8   
+
+ 422          * ÊäÈëÊä³ö²ÎÊý£º
+ 423                  pRfBuf£ºÊäÈë£¬ÓÃÓÚ´æ·ÅÊäÈë²ÎÊýµÄ»º´æ£¬´ÓÍâ²¿´«Èë£¬ÓÃÓÚ½â¾öÔÚº¯ÊýÄÚ²¿¶¨Òå¹ý´óµÄÊý×éÎÊÌâ
+ 424                          Êä³ö£¬´æ·Å´ÓPN532½ÓÊÕµÄ½á¹û
+ 425          *****************************************************************************************/
+ 426          unsigned char InListPassiveTarget(unsigned char *pRfBuf, unsigned char maxTag, unsigned char brty, 
+ 427                                            unsigned char *pData, unsigned char len)
+ 428          {
+ 429   1          unsigned char i,j,temp;
+ 430   1          unsigned char s;
+ 431   1              
+ 432   1      //    unsigned char icId[4] = {0x66,0x76,0x4B,0xE8};            
+ 433   1      
+ 434   1          pRfBuf[0] = 0x00; //Ç°µ¼Âë
+ 435   1          pRfBuf[1] = 0x00; //°ü¿ªÊ¼±êÖ¾2¸ö×Ö½Ú
+ 436   1          pRfBuf[2] = 0xFF;
+ 437   1          pRfBuf[3] = len + 1 + 1 + 1 + 1;//len + 1×Ö½ÚµÄmaxTag + 1×Ö½ÚµÄbrty + 1×Ö½ÚµÄPD0 + 1×Ö½ÚµÄTFI
+ 438   1          pRfBuf[4] = 0x100-pRfBuf[3];
+ 439   1          pRfBuf[5] = 0xD4; //·½Ïò±êÊ¾
+ 440   1          temp = pRfBuf[5];
+ 441   1          pRfBuf[6] = 0x4A; //ÃüÁîÂë
+ 442   1          temp += pRfBuf[6];
+ 443   1          pRfBuf[7] = maxTag;   //1
+ 444   1          temp += pRfBuf[7];
+ 445   1          pRfBuf[8] = brty;   //0
+ 446   1          temp += pRfBuf[8];
+ 447   1          
+ 448   1          for (i=0; i<len; i++)
+ 449   1          {
+ 450   2              pRfBuf[9+i] = pData[i];
+ 451   2              temp  += pData[i];
+ 452   2          }
+ 453   1          
+ 454   1          pRfBuf[9+i] = 0x100 - temp; //DCS
+ 455   1          pRfBuf[9+i+1] = 0x00; 
+ 456   1          
+ 457   1          //µ×²ã·¢ËÍº¯Êý    
+ 458   1          s = PN532SendData(pRfBuf,9+i+1+1);
+ 459   1          if (s!=ERR_NO)
+ 460   1          {
+ 461   2              return ERR_SENDDATA;
+ 462   2          }
+ 463   1          s = PN532RecvAck(pRfBuf);
+ 464   1          if (s!=ERR_NO)
+ 465   1          {                            
+ 466   2              //      C51Uart2SendByte(ERR_RECVACK);
+ 467   2              return ERR_RECVACK;
+ 468   2          }
+ 469   1          s = PN532RecvData(pRfBuf);
+ 470   1          if (s!=ERR_NO)
+ 471   1          {            
+ 472   2              //      C51Uart2SendByte(ERR_RECVDATA);
+ 473   2              return ERR_RECVDATA;
+ 474   2          }
+ 475   1      
+ 476   1          if(memcmp(icId,&pRfBuf[13],4)==0)
+ 477   1              {
+ 478   2              //      C51Uart2SendByte(ERR_NO);
+ 479   2                      return ERR_NO;
+ 480   2              }
+ 481   1              else
+ 482   1              {
+ 483   2              //      C51Uart2SendByte(ERR_CARD);
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 9   
+
+ 484   2                      return ERR_CARD;
+ 485   2              }
+ 486   1                      
+ 487   1       //   return ERR_NO;
+ 488   1      }
+*** WARNING C280 IN LINE 429 OF UART0_APP.C: 'j': unreferenced local variable
+ 489          
+ 490           unsigned char f_25ms = 0;
+ 491           unsigned char ms_25Cnt = 0;
+ 492           unsigned char ms_100Cnt = 0;
+ 493          
+ 494           unsigned char f_LED1_ERR_NO = 0;
+ 495           unsigned char f_BUZZER_ERR_NO = 0;
+ 496           unsigned char f_LED2_ERR_CARD = 0;
+ 497           unsigned char f_BUZZER_ERR_CARD = 0;
+ 498                                  
+ 499           unsigned char preStatus;       
+ 500           
+ 501          unsigned char noErrBuzzerCnt;
+ 502          unsigned char errCardBuzzerCnt;         
+ 503          unsigned char noErrLedCnt;   
+ 504          unsigned char errCardLedCnt;    
+ 505          void main()
+ 506          { 
+ 507   1       unsigned char cnt,buzzerCnt;
+ 508   1       unsigned char i,s; 
+ 509   1       unsigned char OK[3] = {0xAA,0xAA,0xAA};
+ 510   1       unsigned char ERR[3] = {0xCC,0xCC,0xCC};
+ 511   1       
+ 512   1       
+ 513   1       C51InitIo(); 
+ 514   1       C51InitUart(); 
+ 515   1       C51InitTimer(1);
+ 516   1      // WDT_CONTR = 0x3F;//Ê¹ÄÜ¿´ÃÅ¹·¡¢Çå¿´ÃÅ¹·±êÖ¾¡¢¿ÕÏÐÄ£Ê½¼ÆÊý¡¢·ÖÆµÏµÊý(scale:bit2-bit0)£¬Òç³öÊ±¼ä=£¨12*sca
+             -le*32768£©/Fosc
+ 517   1          
+ 518   1       EA = 1;   //cpuÖÐ¶Ï×ÜÔÊÐí
+ 519   1       
+ 520   1      // p25 = 0;
+ 521   1      // C51Delay1us(60000);
+ 522   1      // C51Delay1us(60000);
+ 523   1      // C51Delay1us(60000);
+ 524   1      // C51Delay1us(60000);
+ 525   1      // C51Delay1us(60000);
+ 526   1      // p25 = 1;
+ 527   1       gUart1RecvFlag = 0;
+ 528   1      //--------------»½ÐÑPN532----------------
+ 529   1       C51Uart1SendByte(0x55);
+ 530   1       C51Uart1SendByte(0x55);
+ 531   1       C51Uart1SendByte(0x00);
+ 532   1       C51Uart1SendByte(0x00);
+ 533   1       C51Uart1SendByte(0x00);                   
+ 534   1       SAMConfiguration(gPn532Data,1,0,1);
+ 535   1       for (i=0; i<gPn532Data[3]+7; i++)
+ 536   1       {
+ 537   2        C51Uart2SendByte(gPn532Data[i]);
+ 538   2       }                   
+ 539   1       LED1 = 0;
+ 540   1       LED2 = 0;
+ 541   1       preStatus = 0;
+ 542   1      //---------------------------------------
+ 543   1       while(1)
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 10  
+
+ 544   1       {                                                        
+ 545   2                              if(f_25ms)
+ 546   2                              {
+ 547   3                                              f_25ms = 0; 
+ 548   3                                                                      
+ 549   3                                              s = InListPassiveTarget(gPn532Data,1,0,0,0);       
+ 550   3      //                                                      C51Uart2SendByte(1);
+ 551   3                                                      C51Uart2SendByte(s);
+ 552   3      //                                                      C51Uart2SendByte(preStatus);
+ 553   3      //                                                      C51Uart2SendByte(2);    
+ 554   3                                                                                      
+ 555   3                                                if((ERR_NO==s&&preStatus==ERR_RECVDATA)||(ERR_NO==s&&preStatus==ERR_CARD))
+ 556   3                                                {     
+ 557   4                                                  //Çå´íÎó¿¨×´Ì¬ÐÅÏ¢    
+ 558   4                                                      LED2 = 0;       
+ 559   4                                                      f_LED2_ERR_CARD = 0;
+ 560   4                                                      f_BUZZER_ERR_CARD = 0;   
+ 561   4      
+ 562   4                                                      LED1 = 1;                  
+ 563   4                                                      BUZZER = 1;             
+ 564   4                                                      f_LED1_ERR_NO = 1;
+ 565   4                                                      f_BUZZER_ERR_NO = 1;
+ 566   4                                                      noErrBuzzerCnt = 0;
+ 567   4                                                      errCardBuzzerCnt = 0;           
+ 568   4                                                      noErrLedCnt = 0;   
+ 569   4                                                      errCardLedCnt = 0;              
+ 570   4                                                }
+ 571   3                                                else if((ERR_CARD==s&&preStatus==ERR_RECVDATA)||(ERR_CARD==s&&preStatus==ERR_NO))
+ 572   3                                                {             
+ 573   4                                                  //ÇåÕýÈ·¿¨×´Ì¬ÐÅÏ¢                                    
+ 574   4                                                      LED1 = 0;
+ 575   4                                                      f_LED1_ERR_NO = 0;
+ 576   4                                                      f_BUZZER_ERR_NO = 0;
+ 577   4                                                                
+ 578   4                                                      LED2 = 1;
+ 579   4                                                      BUZZER = 1;             
+ 580   4                                                      f_LED2_ERR_CARD = 1;
+ 581   4                                                      f_BUZZER_ERR_CARD = 1;          
+ 582   4                                                      noErrBuzzerCnt = 0;
+ 583   4                                                      errCardBuzzerCnt = 0;           
+ 584   4                                                      noErrLedCnt = 0;   
+ 585   4                                                      errCardLedCnt = 0;           
+ 586   4                                            }    
+ 587   3                                                      
+ 588   3                                                 preStatus = s; 
+ 589   3                              }                
+ 590   2         }
+ 591   1      }
+*** WARNING C280 IN LINE 507 OF UART0_APP.C: 'cnt': unreferenced local variable
+*** WARNING C280 IN LINE 507 OF UART0_APP.C: 'buzzerCnt': unreferenced local variable
+ 592          //´®¿ÚÖÐ¶Ï·þÎñ³ÌÐò
+ 593          void Uart1IsrHandler(void) interrupt 4 
+ 594          { 
+ 595   1       if (RI)
+ 596   1       {
+ 597   2        RI = 0;  
+ 598   2        gPn532RxLen--; 
+ 599   2        if (gPn532RxLen)
+ 600   2        {
+ 601   3         *gpPn532RxBuf = SBUF;
+ 602   3         
+ 603   3         gi++;
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 11  
+
+ 604   3         if (gi==4)
+ 605   3         {
+ 606   4          if (0x00==*gpPn532RxBuf)//ÓÉÓÚACKÖ¡ÓëÆÕÍ¨Ö¡ÓÐÒ»¶¨µÄÇø±ð£¬ËùÒÔÒªÇø±ð¶Ô´ý
+ 607   4          {
+ 608   5           gPn532RxLen = *gpPn532RxBuf + 2;  //½ÓÊÕACK
+ 609   5          }
+ 610   4          else
+ 611   4          {
+ 612   5           gPn532RxLen = *gpPn532RxBuf + 3;  //°ü³¤¶È + 1×Ö½ÚµÄ°ü³¤¶ÈÐ£Ñé + 1×Ö½ÚµÄÊý¾ÝÐ£Ñé + 1×Ö½ÚµÄºóµ¼Âë
+ 613   5          }
+ 614   4         }
+ 615   3         
+ 616   3         gpPn532RxBuf++;
+ 617   3        }
+ 618   2        else
+ 619   2        {
+ 620   3         *gpPn532RxBuf = SBUF;
+ 621   3         gUart1RecvFlag = 1;
+ 622   3        }  
+ 623   2       }
+ 624   1       if (TI)
+ 625   1       {          
+ 626   2        TI = 0; 
+ 627   2       }
+ 628   1      } 
+ 629          void Timer0IsrHandler(void) interrupt 1
+ 630          {                                                        
+ 631   1               static unsigned char counter;
+ 632   1              
+ 633   1               TH0 = 0x4C;
+ 634   1               TL0 = 0x00;
+ 635   1      
+ 636   1               if(++counter==20)
+ 637   1               {
+ 638   2                      counter = 0;   
+ 639   2                       f_25ms = 1;
+ 640   2               }
+ 641   1              
+ 642   1              if(gTimeOutAckFlag==0)
+ 643   1              {
+ 644   2                      if(++ms_25Cnt==1)  //´¦Àí25msÊÂ¼þ
+ 645   2                      {
+ 646   3                              ms_25Cnt = 0;
+ 647   3                              gTimeOutAckFlag = 1;                                                                                                    
+ 648   3                      }       
+ 649   2              }       
+ 650   1              if(gTimeOutDataFlag==0)
+ 651   1              {                                
+ 652   2                      if(++ms_100Cnt==4)      //´¦Àí100msÊÂ¼þ
+ 653   2                      {
+ 654   3                              ms_100Cnt = 0;
+ 655   3                              gTimeOutDataFlag = 1;
+ 656   3                      }
+ 657   2              } 
+ 658   1      // if (--gTimeMult)
+ 659   1      //  return;
+ 660   1      // gTimeOutFlag = 1;
+ 661   1      //
+ 662   1                               //ÕýÈ·µÄ¿¨
+ 663   1                      //      C51Uart2SendByte(0x33);
+ 664   1                              //´¦Àí1sÊÂ¼þ
+ 665   1                              if(f_BUZZER_ERR_NO)
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 12  
+
+ 666   1                              {
+ 667   2                                      if(++noErrBuzzerCnt==10)//
+ 668   2                                      {
+ 669   3                                              noErrBuzzerCnt = 0;
+ 670   3                                              f_BUZZER_ERR_NO = 0;
+ 671   3                                              BUZZER = 0;                                                             
+ 672   3                                      }
+ 673   2                              }                                               
+ 674   1                              //´¦Àí5sÊÂ¼þ
+ 675   1                              if(f_LED1_ERR_NO)
+ 676   1                              {                                               
+ 677   2                                      if(++noErrLedCnt==50)           //25*200ms
+ 678   2                                      {               
+ 679   3                                              noErrLedCnt = 0;
+ 680   3                                              f_LED1_ERR_NO = 0;
+ 681   3                                              LED1 = 0;
+ 682   3                                      } 
+ 683   2                              } 
+ 684   1      
+ 685   1                              //´íÎóµÄ¿¨
+ 686   1                              if(f_BUZZER_ERR_CARD)
+ 687   1                              {
+ 688   2                                  errCardBuzzerCnt++;
+ 689   2                                      if(errCardBuzzerCnt==10)
+ 690   2                                      {                        
+ 691   3                                              BUZZER = 0;
+ 692   3                                      }
+ 693   2                                      else if(errCardBuzzerCnt==20)
+ 694   2                                      {
+ 695   3                                              BUZZER = 1;
+ 696   3                                      }       
+ 697   2                                      else if(errCardBuzzerCnt==30)
+ 698   2                                      {
+ 699   3                                              BUZZER = 0;
+ 700   3                                      }
+ 701   2                                      else if(errCardBuzzerCnt==40)
+ 702   2                                      {
+ 703   3                                              BUZZER = 1;
+ 704   3                                      }
+ 705   2                                      else if(errCardBuzzerCnt==50)
+ 706   2                                      {
+ 707   3                                              f_BUZZER_ERR_CARD = 0;
+ 708   3                                              BUZZER = 0;
+ 709   3                                      }
+ 710   2                              }                                                                       
+ 711   1                              if(f_LED2_ERR_CARD)
+ 712   1                              {                               
+ 713   2                                 if(++errCardLedCnt==50)
+ 714   2                                      {                          
+ 715   3                                              errCardLedCnt = 0;
+ 716   3                                              f_LED2_ERR_CARD = 0;
+ 717   3                                              LED2 = 0;
+ 718   3                                      }       
+ 719   2                          }
+ 720   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1417    ----
+   CONSTANT SIZE    =     12    ----
+   XDATA SIZE       =    361    ----
+   PDATA SIZE       =   ----    ----
+C51 COMPILER V9.00   UART0_APP                                                             04/05/2019 23:13:23 PAGE 13  
+
+   DATA SIZE        =     25      40
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  3 WARNING(S),  0 ERROR(S)
