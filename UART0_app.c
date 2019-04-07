@@ -1,7 +1,7 @@
 //Git is a distributed version control system
 //Git is a free software distributed under the GPL.
 //Git has a mutable index called stage.
-//Git creat a new branch is quick
+//Git creat a new branch is so quick
 /*------------------------------------------------------------------*/
 /* --- STC MCU International Limited -------------------------------*/
 /* --- STC 1T Series MCU Programme Demo ----------------------------*/
